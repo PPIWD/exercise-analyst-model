@@ -48,24 +48,38 @@ def index():
 def ml_prediction():
     accelerometer_meas_entities = request.form['accelerometerMeasEntities']
     gyroscope_meas_entities = request.form['gyroscopeMeasEntities']
-    res_acc = json.loads(accelerometer_meas_entities)
-    res_gyro = json.loads(gyroscope_meas_entities)
 
-    pred_data = {
-        "acc_x": [res_acc[0]["x"]],
-        "acc_y": [res_acc[0]["y"]],
-        "acc_z": [res_acc[0]["z"]],
-        "gyro_x": [res_gyro[0]["x"]],
-        "gyro_y": [res_gyro[0]["y"]],
-        "gyro_z": [res_gyro[0]["z"]],
-        "measurementId": [1],
-        "repetitions": [10]
+    measurements = {
+    "acc": pd.read_json(accelerometer_meas_entities),
+    "gyro": pd.read_json(gyroscope_meas_entities)
     }
 
-    df = pd.DataFrame.from_dict(pred_data)
+    for name in ["acc", "gyro"]:
+      measurements[name].sort_values(by=['timestampUtc'], ascending=[True], inplace=True)
+      measurements[name] = measurements[name].reset_index(drop=True) # update index
+
+    df_resampled = {}
+    df_interpolated = {}
+    for name in ["acc", "gyro"]:
+      # resample
+      df_resampled[name] = measurements[name].set_index('timestampUtc').resample('10ms').mean()
+      # interpolate
+      df_interpolated[name] = df_resampled[name].interpolate('linear')
+      # round
+      for direction in ['x', 'y', 'z']:
+          df_interpolated[name][direction] = df_interpolated[name][direction].round(decimals=6)
+      # rename x to gyro_x, acc_x etc
+      df_interpolated[name].rename({"x": f"{name}_x", "y": f"{name}_y", "z": f"{name}_z"}, axis='columns', inplace = True, errors='raise')
+    # remove duplicate columns
+    df_interpolated['gyro'] = df_interpolated['gyro'].drop(columns=['id'])
+    df_interpolated['acc'] = df_interpolated['acc'].drop(columns=['id'])
+    # merge acc and gyro data by resampled timestamp
+    df_interpolated_both = df_interpolated['acc'].merge(df_interpolated['gyro'], how='inner', on='timestampUtc')
+    df_interpolated_both.reset_index(inplace = True)
+
     try:
         model = ML_MODEL
-        pred = model.predict(df)
+        pred = model.predict(df_interpolated_both)
         return pred[0]
     except:
         return "Could not make prediction"
