@@ -17,6 +17,12 @@ list_of_ids = []
 for l in range(len(json_response)):
     list_of_ids.append(json_response[l]['id'])
 
+# deleting bugged ID
+bugged = [3, 46]
+for bug in bugged:
+    while bug in list_of_ids:
+        list_of_ids.remove(bug)
+
 # save measurement ids in json file
 out_file = open("measurements_id.json", "w")
 json.dump(json_response, out_file, indent = 6)
@@ -66,7 +72,7 @@ for json_file in list_of_jsons:
     with open(json_file) as f:
         file_data = f.read()
 
-    file_data = file_data.replace('][', ',')
+    file_data = file_data.replace('][', ',').replace(',,', ',')
 
     with open(json_file, 'w') as f:
         f.write(file_data)
